@@ -1,0 +1,6 @@
+Nhiệm vụ tuần này tính u từ lưới đã Meshing. 
+Những thứ cần tìm hiểu:
++ Hook law for plane stress (strain)
++Gaussian Quadratur
++Shape function
+Tính thì đã hướng dẫn trong bản viết tay dưới đây.
