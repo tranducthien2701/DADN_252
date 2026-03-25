@@ -6,22 +6,30 @@
         "thickness": 0.1  // Bề dày của tấm thép (đơn vị: mét). Dùng để tính thể tích trong tích phân.
     },
     "geometry": {
-        // [HÌNH HỌC]: Định nghĩa kích thước bao ngoài của tấm thép
+        // [HÌNH HỌC]: Định nghĩa kích thước bao ngoài của tấm thép (Dùng cho chia lưới tự động)
         "start_x": 0.0,   // Tọa độ X mép trái (thường đặt là gốc tọa độ)
         "start_y": 0.0,   // Tọa độ Y mép dưới (thường đặt là gốc tọa độ)
-        "end_x": 10.0,    // Tọa độ X mép phải -> Chiều dài tấm thép là 10 mét
-        "end_y": 2.0      // Tọa độ Y mép trên -> Chiều cao tấm thép là 2 mét
+        "end_x": 10.0,    // Tọa độ X mép phải -> Chiều dài tấm thép
+        "end_y": 2.0      // Tọa độ Y mép trên -> Chiều cao tấm thép
     },
     "mesh": {
-        // [CHIA LƯỚI]: Định nghĩa độ mịn và hình dáng của lưới phần tử (Meshing)
+        // [CHIA LƯỚI]: Bảng điều khiển trung tâm quyết định cách tạo lưới
+        
+        "mesh_source": "auto",  // Chọn "auto" (Tự động chia lưới hình chữ nhật) 
+                                // Hoặc chọn "custom" (Đọc tọa độ lồi lõm từ file riêng và chạy Delaunay)
+        
+        // --- Nhóm thông số dùng khi mesh_source là "auto" ---
         "element_type": "quad", // Loại phần tử: Nhập "quad" (Tứ giác 4 nút) hoặc "triangle" (Tam giác 3 nút)
-        "nx": 20,         // Số lượng phần tử được băm dọc theo trục X
-        "ny": 5           // Số lượng phần tử được băm dọc theo trục Y
-                          // -> Tổng cộng: Nếu là quad sẽ có 100 phần tử. Nếu là triangle sẽ có 200 phần tử.
+        "nx": 20,               // Số lượng phần tử được băm dọc theo trục X
+        "ny": 5,                // Số lượng phần tử được băm dọc theo trục Y
+        
+        // --- Nhóm thông số dùng khi mesh_source là "custom" ---
+        "data_file": "mesh_data.json", // Tên file kho dữ liệu chứa tọa độ các hình lồi lõm
+        "shape_name": "hinh_chu_L"     // Tên vật thể cụ thể muốn lấy ra từ kho dữ liệu để băm lưới
     },
     "boundary_conditions": {
         // [ĐIỀU KIỆN BIÊN]: Định nghĩa các ngoại lực và ngàm giữ tác động lên vật thể
-        "force_P": 10000.0,   // Lực kéo P tác dụng vào điểm chỉ định (đơn vị: Newton). 10000.0 = 10 kN.
+        "force_P": 10000.0,   // Lực kéo P tác dụng vào góc trên cùng bên phải (đơn vị: Newton).
         "penalty_value": 1e15 // Giá trị Phạt (Penalty method). Số vô cùng lớn (10^15) dùng để nhân 
                               // vào ma trận độ cứng tại các vị trí ngàm. Nó "khóa cứng" các nút đó lại, 
                               // ép phương trình hiểu rằng chỗ này độ cứng là vô cực, không thể xê dịch.

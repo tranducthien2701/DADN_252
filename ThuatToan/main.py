@@ -2,8 +2,8 @@ import json
 import os
 import numpy as np
 
-# Import cả 2 hàm chia lưới từ file meshing.py
-from meshing import uniform_mesh_quad4, uniform_mesh_triangle
+# Import cả 3 hàm chia lưới từ file meshing.py
+from meshing import uniform_mesh_quad4, uniform_mesh_triangle, delaunay_mesh
 from fem_core import assemble_global_system, apply_boundary_conditions
 from plotter import plot_mesh
 
@@ -63,8 +63,10 @@ def main():
     -> Giải phương trình -> Vẽ hình báo cáo.
 
     [LOGIC CẬP NHẬT MỚI]
-    Đã được nâng cấp để đọc thuộc tính `element_type` từ file config.
-    Tự động rẽ nhánh để gọi đúng hàm chia lưới Tam giác (CST) hoặc Tứ giác (Q4).
+    Đã được nâng cấp để rẽ nhánh xử lý 2 trường hợp:
+    1. Chạy tự động ('auto') cho hình chữ nhật (Quad hoặc Triangle).
+    2. Nạp dữ liệu Custom ('custom') cho các vật thể lồi lõm từ file riêng, 
+       và tự động áp dụng thuật toán Delaunay Triangulation.
     """
     # 1. ĐỌC CẤU HÌNH
     config = load_config()
@@ -73,28 +75,58 @@ def main():
     mesh = config['mesh']
     bc = config['boundary_conditions']
 
-    # Đọc loại phần tử từ JSON (nếu người dùng không ghi gì thì mặc định dùng 'quad')
+    # Đọc cấu hình mesh để biết hệ thống cần chạy tự động hay đọc từ thư viện
+    mesh_source = mesh.get('mesh_source', 'auto')
     element_type = mesh.get('element_type', 'quad')
 
     # 2. CHIA LƯỚI
-    print(f"1. Đang chia lưới theo kiểu [{element_type.upper()}]...")
-    if element_type == 'quad':
-        nodes, elements = uniform_mesh_quad4(
-            geo['start_x'], geo['start_y'], geo['end_x'], geo['end_y'], 
-            mesh['nx'], mesh['ny']
-        )
-    elif element_type == 'triangle':
-        nodes, elements = uniform_mesh_triangle(
-            geo['start_x'], geo['start_y'], geo['end_x'], geo['end_y'], 
-            mesh['nx'], mesh['ny']
-        )
-    else:
-        print("Lỗi: Loại phần tử (element_type) trong file config không hợp lệ!")
-        return
+    if mesh_source == 'auto':
+        # --- CÁCH 1: GIỮ NGUYÊN HÌNH CHỮ NHẬT TỰ ĐỘNG ---
+        print(f"1. Đang tự động chia lưới hình chữ nhật kiểu [{element_type.upper()}]...")
+        if element_type == 'quad':
+            nodes, elements = uniform_mesh_quad4(
+                geo['start_x'], geo['start_y'], geo['end_x'], geo['end_y'], 
+                mesh['nx'], mesh['ny']
+            )
+        elif element_type == 'triangle':
+            nodes, elements = uniform_mesh_triangle(
+                geo['start_x'], geo['start_y'], geo['end_x'], geo['end_y'], 
+                mesh['nx'], mesh['ny']
+            )
+        else:
+            print("Lỗi: Loại phần tử (element_type) trong file config không hợp lệ!")
+            return
+            
+    elif mesh_source == 'custom':
+        # --- CÁCH 2: XỬ LÝ VẬT THỂ LỒI LÕM TỪ FILE RIÊNG ---
+        data_file = mesh.get('data_file', 'mesh_data.json')
+        shape_name = mesh.get('shape_name')
+        
+        print(f"1. Đang nạp tọa độ vật thể [{shape_name}] từ file {data_file}...")
+        
+        base_dir = os.path.dirname(__file__)
+        data_path = os.path.join(base_dir, data_file)
+        
+        try:
+            with open(data_path, 'r', encoding='utf-8') as f:
+                mesh_data = json.load(f)
+        except FileNotFoundError:
+            print(f"Lỗi: Không tìm thấy file {data_file}!")
+            return
+            
+        if shape_name in mesh_data:
+            raw_nodes = mesh_data[shape_name]['nodes']
+            print("   -> Đang chạy thuật toán Delaunay Triangulation...")
+            nodes, elements = delaunay_mesh(raw_nodes)
+            
+            # Ép hệ thống dùng công thức Tam giác vì Delaunay sinh ra tam giác
+            element_type = 'triangle' 
+        else:
+            print(f"Lỗi: Không tìm thấy hình '{shape_name}' trong file {data_file}!")
+            return
 
     # 3. LẮP RÁP MA TRẬN TỔNG
-    print("2. Đang tính toán ma trận độ cứng tổng...")
-    # Bổ sung truyền biến element_type vào hàm lắp ráp để nó chọn đúng công thức (Ke)
+    print(f"2. Đang tính toán ma trận độ cứng tổng (Sử dụng phần tử: {element_type})...")
     K_global, F_global = assemble_global_system(
         nodes, elements, mat['E'], mat['nu'], mat['thickness'], element_type=element_type
     )
@@ -110,8 +142,6 @@ def main():
     # 6. IN KẾT QUẢ VÀ VẼ ĐỒ THỊ
     print_results(u, nodes)
     print("\n5. Đang hiển thị biểu đồ...")
-    
-    # Hệ số phóng đại giúp dễ nhìn thấy sự biến dạng
     plot_mesh(nodes, elements, u=u, scale=500.0)
 
 if __name__ == "__main__":

@@ -1,23 +1,27 @@
 {
     "material": {
-        "E": 10e9, 
-        "nu": 0.1,
+        "E": 10e9,
+        "nu": 0.3,
         "thickness": 0.01
     },
     "geometry": {
         "start_x": 0.0,
         "start_y": 0.0,
-        "end_x": 10.0,
-        "end_y": 2.0
+        "end_x": 5.0,
+        "end_y": 3.0
     },
     "mesh": {
-        "element_type": "triangle",
-        "nx": 10,
-        "ny": 4
+        "mesh_source": "custom",
+        
+        "element_type": "quad",
+        "nx": 20,
+        "ny": 5,
+        
+        "data_file": "mesh_data.json",
+        "shape_name": "dam_chu_I"
     },
     "boundary_conditions": {
         "force_P": 10000.0,
         "penalty_value": 1e15
     }
 }
-

@@ -181,8 +181,9 @@ def apply_boundary_conditions(K_global, F_global, nodes, geo_config, bc_config):
     - Lực F: Điền giá trị lực P vào đúng vị trí hàng tương ứng trong vector F_global.
     """
     
-    # 1. NGÀM CẠNH TRÁI (Tìm nút có x == start_x)
-    fixed_nodes = np.where(nodes[:, 0] == geo_config['start_x'])[0] 
+    # 1. NGÀM CẠNH TRÁI (Khóa chặt vào tường)
+    # Dùng np.isclose thay vì == để tránh sai số số học của Python (floating point error)
+    fixed_nodes = np.where(np.isclose(nodes[:, 0], geo_config['start_x']))[0] 
     
     for node in fixed_nodes:
         dof_x, dof_y = 2 * node, 2 * node + 1
@@ -192,13 +193,19 @@ def apply_boundary_conditions(K_global, F_global, nodes, geo_config, bc_config):
         F_global[dof_x] = 0.0
         F_global[dof_y] = 0.0
 
-    # 2. ÁP DỤNG LỰC KÉO TẠI GÓC TRÊN CÙNG BÊN PHẢI
-    # Tìm nút thỏa mãn cả 2 điều kiện x == end_x VÀ y == end_y
-    top_right_node = np.where((nodes[:, 0] == geo_config['end_x']) & 
-                              (nodes[:, 1] == geo_config['end_y']))[0][0]
+    # 2. ÁP DỤNG LỰC KÉO TẠI GÓC (Tìm nút GẦN NHẤT với target_x, target_y)
+    target_x = geo_config['end_x']
+    target_y = geo_config['end_y']
     
-    dof_x = 2 * top_right_node
+    # Tính khoảng cách từ TẤT CẢ các nút đến điểm đích
+    # Công thức Pytago: d = sqrt((x - target_x)^2 + (y - target_y)^2)
+    distances = np.sqrt((nodes[:, 0] - target_x)**2 + (nodes[:, 1] - target_y)**2)
+    
+    # Lấy ra số thứ tự của nút có khoảng cách nhỏ nhất (Nút nằm gần góc đó nhất)
+    pull_node = np.argmin(distances)
+    
     # Gán lực vào đúng dòng tương ứng trong vector lực
+    dof_x = 2 * pull_node
     F_global[dof_x] = bc_config['force_P']
         
     return K_global, F_global

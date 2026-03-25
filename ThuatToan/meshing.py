@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial import Delaunay
 
 def uniform_mesh_quad4(sx, sy, ex, ey, nx, ny):
     """
@@ -39,43 +40,37 @@ def uniform_mesh_quad4(sx, sy, ex, ey, nx, ny):
     """
     
     # --- BƯỚC 1: TẠO CÁC MỐC TỌA ĐỘ TRÊN TRỤC X VÀ Y ---
-    # np.linspace sinh ra các mốc cắt đều nhau. 
-    # Ví dụ: np.linspace(0, 2, 2+1) -> [0.0, 1.0, 2.0]
     x = np.linspace(sx, ex, nx + 1)
     y = np.linspace(sy, ey, ny + 1)
     
     nodes = []
     
-    # Ma trận nids (Node IDs) dùng để lập bản đồ vị trí 2D (hàng i, cột j) 
-    # sang 1D (số thứ tự của nút, ví dụ: Nút 0, Nút 1, Nút 2...).
+    # Ma trận nids (Node IDs) dùng để lập bản đồ vị trí 2D (hàng i, cột j) sang 1D.
     nids = np.zeros((ny + 1, nx + 1), dtype=int)
     
     # --- BƯỚC 2: TẠO DANH SÁCH TỌA ĐỘ CÁC NÚT (NODES) ---
-    k = 0 # k là bộ đếm số thứ tự của Nút, bắt đầu từ 0
-    for i in range(ny + 1):          # Quét từ hàng dưới lên hàng trên
-        for j in range(nx + 1):      # Quét từ cột trái sang cột phải
-            nids[i, j] = k           # Lưu số thứ tự k vào bản đồ vị trí 
-            nodes.append([x[j], y[i]]) # Lưu tọa độ thực tế (x, y) của nút này
-            k += 1                   # Tăng số thứ tự lên 1 cho nút tiếp theo
+    k = 0
+    for i in range(ny + 1):          
+        for j in range(nx + 1):      
+            nids[i, j] = k           
+            nodes.append([x[j], y[i]]) 
+            k += 1                   
             
     nodes = np.array(nodes)
     
     # --- BƯỚC 3: KẾT NỐI 4 NÚT LẠI THÀNH 1 PHẦN TỬ (ELEMENTS) ---
     elements = []
-    for i in range(ny):              # Quét qua từng hàng của viên gạch
-        for j in range(nx):          # Quét qua từng ô của viên gạch trên hàng đó
-            # Trích xuất số thứ tự của 4 nút bao quanh ô (i, j) theo quy tắc ngược chiều kim đồng hồ
-            n1 = nids[i, j]          # Nút góc dưới bên trái
-            n2 = nids[i, j + 1]      # Nút góc dưới bên phải
-            n3 = nids[i + 1, j + 1]  # Nút góc trên bên phải
-            n4 = nids[i + 1, j]      # Nút góc trên bên trái
+    for i in range(ny):              
+        for j in range(nx):          
+            n1 = nids[i, j]          
+            n2 = nids[i, j + 1]      
+            n3 = nids[i + 1, j + 1]  
+            n4 = nids[i + 1, j]      
             
-            # Đóng gói 4 nút này thành 1 phần tử
             elements.append([n1, n2, n3, n4])
             
     elements = np.array(elements)
     
-    # Trả về kết quả cho các hàm toán học phía sau tính toán
     return nodes, elements
 
 
@@ -91,17 +86,9 @@ def uniform_mesh_triangle(sx, sy, ex, ey, nx, ny):
     [CÔNG THỨC & LOGIC SỬ DỤNG]
     1. Tái sử dụng (Reuse) lại danh sách tọa độ Nút (nodes) từ hàm tứ giác.
     2. Logic chẻ phần tử:
-       Một phần tử tứ giác có 4 nút: [n1, n2, n3, n4].
        Đường chéo nối n1 và n3 sẽ chia tứ giác này thành 2 tam giác:
-       - Tam giác nửa dưới: [n1, n2, n3] (Vẫn đảm bảo ngược chiều kim đồng hồ)
-       - Tam giác nửa trên: [n1, n3, n4] (Vẫn đảm bảo ngược chiều kim đồng hồ)
-
-    [VÍ DỤ MINH HỌA (THAY SỐ)]
-    - Đầu vào: Tấm thép 2x2 mét, nx=2, ny=2. Thay vì ra 4 phần tử tứ giác, nó sẽ ra 8 phần tử tam giác.
-    - Giả sử tứ giác đầu tiên ở góc dưới trái là: [0, 1, 4, 3]
-      Thuật toán sẽ "chẻ" nó thành 2 phần tử mới bổ sung vào danh sách:
-      1. Tam giác dưới: [0, 1, 4]
-      2. Tam giác trên: [0, 4, 3]
+       - Tam giác nửa dưới: [n1, n2, n3] 
+       - Tam giác nửa trên: [n1, n3, n4] 
     """
     
     # 1. Gọi hàm tạo lưới tứ giác cũ để lấy tọa độ các nút (nodes) và mảng tứ giác
@@ -120,3 +107,32 @@ def uniform_mesh_triangle(sx, sy, ex, ey, nx, ny):
         tri_elements.append([n1, n3, n4])
         
     return nodes, np.array(tri_elements)
+
+
+def delaunay_mesh(points):
+    """
+    [MỤC ĐÍCH THỰC TẾ]
+    Áp dụng thuật toán Delaunay Triangulation (đúng như thầy ghi trong vở).
+    Nó nhận vào một danh sách các điểm tọa độ bất kỳ (kể cả hình lồi lõm), 
+    và tự động tìm cách nối chúng lại thành một lưới tam giác tối ưu nhất.
+
+    [CÔNG THỨC & LOGIC SỬ DỤNG]
+    Dùng module `Delaunay` của thư viện `scipy.spatial`. 
+    Thuật toán đảm bảo không có điểm nào nằm bên trong đường tròn ngoại tiếp 
+    của bất kỳ tam giác nào trong lưới (giúp tối đa hóa các góc nhỏ nhất, 
+    tránh tam giác bị dẹt).
+
+    [VÍ DỤ MINH HỌA]
+    - Đầu vào: 6 điểm tạo thành hình chữ L.
+    - Đầu ra: Tự động trả về ma trận elements gồm các tam giác nối 6 điểm đó 
+      một cách hợp lý nhất mà không bị vắt chéo ra ngoài không gian rỗng.
+    """
+    nodes = np.array(points)
+    
+    # Chỉ 1 dòng lệnh này, thuật toán Delaunay tự động giải quyết mọi việc nối điểm!
+    tri = Delaunay(nodes)
+    
+    # tri.simplices chính là mảng chứa danh sách các Nút tạo thành 1 tam giác
+    elements = tri.simplices
+    
+    return nodes, elements
