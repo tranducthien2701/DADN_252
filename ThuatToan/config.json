@@ -11,8 +11,9 @@
         "end_y": 2.0
     },
     "mesh": {
-        "nx": 20,
-        "ny": 18
+        "element_type": "triangle",
+        "nx": 10,
+        "ny": 4
     },
     "boundary_conditions": {
         "force_P": 10000.0,

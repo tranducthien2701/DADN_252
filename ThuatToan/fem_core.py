@@ -51,7 +51,7 @@ def shape_function_derivatives(xi, eta):
 def compute_Ke(coords, E, nu, thickness):
     """
     [MỤC ĐÍCH THỰC TẾ]
-    Khám sức khỏe cho 1 "viên gạch" (Phần tử) duy nhất. Hàm này tính ra Ma trận độ cứng Ke (8x8).
+    Khám sức khỏe cho 1 "viên gạch Tứ giác" duy nhất. Hàm này tính ra Ma trận độ cứng Ke (8x8).
     Nó là đại diện cho mức độ lỳ lợm của 4 nút trên viên gạch khi bị giằng xé.
 
     [CÔNG THỨC & LOGIC]
@@ -60,12 +60,6 @@ def compute_Ke(coords, E, nu, thickness):
     Ke = Tổng( B^T * D * B * det(J) * thickness ) tại 4 điểm Gauss.
     - J (Jacobian) là hệ số quy đổi giữa viên gạch bị méo (thực tế) và hình vuông chuẩn (toán học).
     - B là Ma trận biến dạng (liên hệ giữa chuyển vị nút và biến dạng bên trong).
-
-    [VÍ DỤ MINH HỌA (THAY SỐ)]
-    - Viên gạch hình vuông 2x2m. J = [[1, 0], [0, 1]]. det(J) = 1.0 (Diện tích quy đổi bảo toàn).
-    - Ma trận D (3x3), Ma trận B (3x8).
-    - B^T (8x3) nhân D (3x3) nhân B (3x8) = Ma trận (8x8).
-    - Lặp 4 lần cho 4 điểm Gauss và cộng dồn -> Đầu ra: Ma trận Ke kích thước 8x8.
     """
     D = get_D_matrix(E, nu)
     Ke = np.zeros((8, 8))
@@ -95,25 +89,51 @@ def compute_Ke(coords, E, nu, thickness):
             Ke += (B.T @ D @ B) * detJ * thickness * 1.0 
     return Ke
 
-def assemble_global_system(nodes, elements, E, nu, thickness):
+def compute_Ke_triangle(coords, E, nu, thickness):
+    """
+    [MỤC ĐÍCH THỰC TẾ]
+    Tính độ cứng Ke (kích thước 6x6) cho phần tử Tam giác 3 nút (CST). 
+    Vì Tam giác CST có biến dạng bên trong là một hằng số, ta không cần dùng Tích phân Gauss 
+    mà có thể tính trực tiếp bằng một công thức giải tích đơn giản.
+
+    [CÔNG THỨC & LOGIC]
+    - B là ma trận biến dạng (3x6) chứa các hằng số hình học tính từ tọa độ đỉnh.
+    - Công thức chuẩn: Ke = B^T * D * B * Diện_tích * Bề_dày
+    """
+    D = get_D_matrix(E, nu)
+    
+    x1, y1 = coords[0]
+    x2, y2 = coords[1]
+    x3, y3 = coords[2]
+    
+    # Tính diện tích tam giác (Area)
+    Area = 0.5 * abs(x1*(y2 - y3) + x2*(y3 - y1) + x3*(y1 - y2))
+    
+    # Tính các hệ số b, c cho ma trận B của tam giác CST
+    b1 = y2 - y3; c1 = x3 - x2
+    b2 = y3 - y1; c2 = x1 - x3
+    b3 = y1 - y2; c3 = x2 - x1
+    
+    B = (1.0 / (2.0 * Area)) * np.array([
+        [b1,  0, b2,  0, b3,  0],
+        [ 0, c1,  0, c2,  0, c3],
+        [c1, b1, c2, b2, c3, b3]
+    ])
+    
+    # Tính Ke trực tiếp
+    Ke = (B.T @ D @ B) * Area * thickness
+    return Ke
+
+def assemble_global_system(nodes, elements, E, nu, thickness, element_type="quad"):
     """
     [MỤC ĐÍCH THỰC TẾ]
     "Bôi keo" dán các viên gạch rời rạc lại thành một tấm thép hoàn chỉnh. 
-    Nếu Nút số 5 là nút dùng chung của 4 viên gạch, thì độ cứng của Nút 5 sẽ bằng 
-    tổng độ cứng của 4 góc viên gạch đó cộng lại (Nguyên lý chồng chất).
+    Hàm này có khả năng tự động nhận dạng xem bạn đang dán gạch Tứ giác (4 nút) hay Tam giác (3 nút).
 
     [CÔNG THỨC & LOGIC]
     K_global là một ma trận vuông khổng lồ. Kích thước = (Số nút * 2) x (Số nút * 2).
-    Máy tính sẽ bốc từng Ke (8x8) của từng phần tử, tra bản đồ xem 4 nút của phần tử này 
+    Máy tính sẽ bốc từng Ke (8x8 hoặc 6x6) của từng phần tử, tra bản đồ xem các nút của phần tử này 
     mang số thứ tự bao nhiêu trong mảng tổng, rồi đem cộng (+=) các con số vào đúng vị trí đó.
-
-    [VÍ DỤ MINH HỌA]
-    - Đề bài: Tấm thép chia làm 4 viên gạch, có tổng cộng 9 nút.
-    - Kích thước ma trận tổng K_global = (9*2) x (9*2) = 18x18.
-    - Xét viên gạch số 0 (chứa các nút [0, 1, 4, 3]). Vòng lặp sẽ lấy phần tử K_e[0,0] 
-      (là độ cứng x của nút địa phương 1) cộng dồn vào K_global[0,0] (độ cứng x của nút tổng 0).
-    - Khi duyệt qua viên gạch số 1 (chứa nút [1, 2, 5, 4]), K_global của nút 1 lại tiếp tục 
-      được cộng thêm độ cứng từ viên gạch số 1.
     """
     num_nodes = len(nodes)
     K_global = np.zeros((2 * num_nodes, 2 * num_nodes))
@@ -121,15 +141,25 @@ def assemble_global_system(nodes, elements, E, nu, thickness):
     
     for el_nodes in elements:
         coords = nodes[el_nodes] 
-        Ke = compute_Ke(coords, E, nu, thickness)
         
-        for i in range(4):
-            for j in range(4):
+        # RẼ NHÁNH TÙY THEO LOẠI PHẦN TỬ ĐỂ GỌI ĐÚNG HÀM TÍNH ĐỘ CỨNG
+        if element_type == "quad":
+            Ke = compute_Ke(coords, E, nu, thickness)
+            num_nodes_per_el = 4
+        elif element_type == "triangle":
+            Ke = compute_Ke_triangle(coords, E, nu, thickness)
+            num_nodes_per_el = 3
+        else:
+            raise ValueError("Lỗi: element_type phải là 'quad' hoặc 'triangle'.")
+            
+        # Vòng lặp tự động điều chỉnh quét 4x4 (với quad) hoặc 3x3 (với triangle)
+        for i in range(num_nodes_per_el):
+            for j in range(num_nodes_per_el):
                 # Xác định số thứ tự hàng/cột trong ma trận khổng lồ
                 global_i_x, global_i_y = 2 * el_nodes[i], 2 * el_nodes[i] + 1
                 global_j_x, global_j_y = 2 * el_nodes[j], 2 * el_nodes[j] + 1
                 
-                # Bơm dữ liệu từ Ke (8x8) vào K_global
+                # Bơm dữ liệu từ Ke vào K_global
                 K_global[global_i_x, global_j_x] += Ke[2*i, 2*j]
                 K_global[global_i_x, global_j_y] += Ke[2*i, 2*j+1]
                 K_global[global_i_y, global_j_x] += Ke[2*i+1, 2*j]
@@ -149,13 +179,6 @@ def apply_boundary_conditions(K_global, F_global, nodes, geo_config, bc_config):
       đường chéo chính của K_global nhân với một số khổng lồ (10^15). Phương trình lúc này trở thành:
       (Số khổng lồ) * u = 0  => Máy tính sẽ tự động giải ra u ≈ 0 (khóa chặt thành công).
     - Lực F: Điền giá trị lực P vào đúng vị trí hàng tương ứng trong vector F_global.
-
-    [VÍ DỤ MINH HỌA (THỰC TẾ ĐỀ BÀI)]
-    - Tấm thép có 9 nút. Cạnh trái x=0 là tường ngàm. 
-    - Thuật toán `np.where` quét thấy Nút 0, Nút 3, Nút 6 nằm ở x=0. Nó sẽ lấy đường chéo 
-      của K_global tại hàng 0, 1, 6, 7, 12, 13 nhân với 10^15.
-    - Cần kéo Nút 8 (nằm ở góc trên cùng x=5, y=3) sang phải 10,000 N. Bậc tự do trục x 
-      của Nút 8 là hàng số 16 (vì 8 * 2 = 16). Ta gán F_global[16] = 10000.
     """
     
     # 1. NGÀM CẠNH TRÁI (Tìm nút có x == start_x)

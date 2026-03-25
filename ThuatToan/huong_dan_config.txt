@@ -2,8 +2,8 @@
     "material": {
         // [VẬT LIỆU]: Định nghĩa "chất liệu" của vật thể
         "E": 20e9,        // Mô-đun đàn hồi (Young's Modulus). 20e9 = 20 GPa. Quy định độ "cứng" của thép.
-        "nu": 0.3,        // Hệ số Poisson. Quy định mức độ vật thể bị "teo" lại ở chiều ngang khi bị kéo giãn ở chiều dọc.
-        "thickness": 0.1  // Bề dày của tấm thép (đơn vị: mét). Bề dày này dùng để tính thể tích trong tích phân.
+        "nu": 0.3,        // Hệ số Poisson. Quy định mức độ vật thể bị "teo" lại ở chiều ngang khi kéo dọc.
+        "thickness": 0.1  // Bề dày của tấm thép (đơn vị: mét). Dùng để tính thể tích trong tích phân.
     },
     "geometry": {
         // [HÌNH HỌC]: Định nghĩa kích thước bao ngoài của tấm thép
@@ -13,13 +13,14 @@
         "end_y": 2.0      // Tọa độ Y mép trên -> Chiều cao tấm thép là 2 mét
     },
     "mesh": {
-        // [CHIA LƯỚI]: Định nghĩa độ mịn của lưới phần tử (Meshing)
-        "nx": 20,         // Số lượng phần tử (viên gạch) được băm dọc theo trục X
+        // [CHIA LƯỚI]: Định nghĩa độ mịn và hình dáng của lưới phần tử (Meshing)
+        "element_type": "quad", // Loại phần tử: Nhập "quad" (Tứ giác 4 nút) hoặc "triangle" (Tam giác 3 nút)
+        "nx": 20,         // Số lượng phần tử được băm dọc theo trục X
         "ny": 5           // Số lượng phần tử được băm dọc theo trục Y
-                          // -> Tổng cộng tấm thép này sẽ được chia thành 20 * 5 = 100 phần tử.
+                          // -> Tổng cộng: Nếu là quad sẽ có 100 phần tử. Nếu là triangle sẽ có 200 phần tử.
     },
     "boundary_conditions": {
-        // [ĐIỀU KIỆN BIÊN]: Định nghĩa các ngoại lực tác động lên vật thể
+        // [ĐIỀU KIỆN BIÊN]: Định nghĩa các ngoại lực và ngàm giữ tác động lên vật thể
         "force_P": 10000.0,   // Lực kéo P tác dụng vào điểm chỉ định (đơn vị: Newton). 10000.0 = 10 kN.
         "penalty_value": 1e15 // Giá trị Phạt (Penalty method). Số vô cùng lớn (10^15) dùng để nhân 
                               // vào ma trận độ cứng tại các vị trí ngàm. Nó "khóa cứng" các nút đó lại, 
