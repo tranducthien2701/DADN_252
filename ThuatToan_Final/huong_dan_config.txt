@@ -1,0 +1,26 @@
+HƯỚNG DẪN CẤU HÌNH HỆ THỐNG FEM (PHIÊN BẢN HUNTER LOGIC)
+
+1. CƠ CHẾ TÌM NÚT (TARGETING):
+   Để ngàm bất kỳ điểm nào, sử dụng các 'target' sau:
+   - "x_equal" / "y_equal": Tìm tất cả các nút nằm trên đường thẳng x hoặc y chỉ định.
+   - "coordinate": Tìm đúng 1 nút tại tọa độ [x, y]. Nếu không có nút khớp tuyệt đối, 
+     hệ thống tìm nút gần nhất trong dung sai 1e-6.
+   - "x_range" / "y_range": Tìm các nút nằm trong khoảng chạy [min, max].
+   - "node_ids": Chỉ định trực tiếp ID nút (Dùng cho lưới custom).
+
+2. BẬC TỰ DO (DOF):
+   - "u": Dịch chuyển phương ngang (X).
+   - "v": Dịch chuyển phương đứng (Y).
+   - ["u", "v"]: Khóa hoàn toàn (Ngàm chết).
+   - ["v"]: Khóa đứng, cho trượt ngang (Gối tựa con lăn).
+
+3. PHƯƠNG PHÁP XỬ LÝ (ZEROING-OUT):
+   Hệ thống không sử dụng Penalty. Với mỗi DOF bị khóa của nút i:
+   - Xóa hàng i, cột i của K_global (gán = 0).
+   - Gán K[i,i] = 1.0.
+   - Gán F_global[i] = 0.0.
+   - Điều này ép kết quả chuyển vị tại đó bằng 0.0 tuyệt đối.
+
+4. CHIA LƯỚI (MESHING):
+   - "auto": Dùng cho tấm chữ nhật. 
+   - "element_type": "quad" (Q4) hoặc "triangle" (T3).
