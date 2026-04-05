@@ -1,0 +1,5 @@
+### Liên quan đến UI/UX bên app, giả lập bằng Android Studio
+* Đã cập nhật thêm các thư viện liên quan trong requirement
+1. npm install theo 2 package(lock).json có trong thư mục base
+2. Lệnh npx react-native run-android để build app
+3. Lệnh uvicorn api:app --host 0.0.0.0 --port 8000 --reload để nối 2 bên 
