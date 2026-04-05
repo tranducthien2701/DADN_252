@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Triangular Meshing Application - Full Editor</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            font-size: 16px; 
+            background-color: #f4f7f6; 
+            color: #333;
+            width: 100vw; height: 100vh;
+            display: flex; flex-direction: column; overflow-x: hidden;
+        }
+
+        header { background-color: #0055AA; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        header h1 { font-size: 24px; }
+
+        .nav-tabs { display: flex; background-color: #e0e6ed; width: 100%; }
+        .nav-tab { flex: 1; text-align: center; padding: 12px; cursor: pointer; font-weight: bold; font-size: 18px; border-bottom: 4px solid transparent; }
+        .nav-tab.active { border-bottom: 4px solid #0055AA; color: #0055AA; background-color: white; }
+
+        main { flex: 1; padding: 20px; width: 100%; display: flex; flex-direction: column; gap: 15px; }
+        
+        /* Project Panel */
+        .project-panel { background: white; padding: 15px; border-radius: 8px; border: 1px solid #ccc; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; }
+        .input-group { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 200px; }
+        .input-group input { padding: 8px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
+        
+        /* Toolbar */
+        .toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
+        button {
+            background-color: #0055AA; color: white; border: none;
+            padding: 10px 15px; font-size: 16px; font-weight: bold;
+            border-radius: 6px; cursor: pointer; transition: 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        button.active-tool { background-color: #FFC107; color: black; box-shadow: 0 0 8px rgba(255,193,7,0.6); }
+        button.success { background-color: #28A745; }
+        button.danger { background-color: #DC3545; }
+        button.secondary { background-color: #6c757d; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; color: #666; box-shadow: none; }
+
+        .canvas-container { flex: 1; width: 100%; background-color: white; border: 2px solid #a0aec0; border-radius: 8px; position: relative; min-height: 500px; }
+        canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+        
+        #error-msg { color: #DC3545; font-weight: bold; min-height: 24px; font-size: 18px; margin-top: 10px;}
+        #success-msg { color: #28A745; font-weight: bold; font-size: 16px; margin-left: 10px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Triangular Meshing App</h1>
+        <div id="project-status">Chưa lưu</div>
+    </header>
+
+    <div class="nav-tabs">
+        <div class="nav-tab active">A. Project & B. Geometry</div>
+    </div>
+
+    <main>
+        <div class="project-panel">
+            <div class="input-group">
+                <label>Tên Project</label>
+                <input type="text" id="proj-name" placeholder="Ví dụ: Gear_Part_V1">
+            </div>
+            <div class="input-group">
+                <label>Mô tả</label>
+                <input type="text" id="proj-desc" placeholder="Mô tả ngắn gọn...">
+            </div>
+            <button class="success" onclick="saveProject()">Lưu Project (Local)</button>
+            <button class="secondary" onclick="loadProject()">Tải Project</button>
+            <span id="success-msg"></span>
+        </div>
+
+        <div class="toolbar">
+            <button id="btn-outer" class="active-tool" onclick="setMode('OUTER')">1. Vẽ Outer Boundary</button>
+            <button id="btn-hole" onclick="setMode('HOLE')" disabled>2. Thêm Hole (Lỗ)</button>
+            <button id="btn-edit" onclick="setMode('EDIT')">3. Chọn / Di chuyển điểm</button>
+            <button id="btn-del-vertex" class="danger" onclick="deleteSelectedVertex()" disabled>Xóa điểm chọn</button>
+            
+            <div style="width: 2px; background: #ccc; margin: 0 10px;"></div>
+            
+            <button id="btn-close" class="success" onclick="closeCurrentLoop()">Đóng vòng</button>
+            <button id="btn-import" class="secondary" onclick="document.getElementById('fileInput').click()">Import JSON</button>
+            <input type="file" id="fileInput" accept=".json" style="display: none;" onchange="importJSON(event)">
+            <button id="btn-clear" class="danger" onclick="clearCanvas()">Xóa tất cả</button>
+        </div>
+        
+        <div class="canvas-container" id="canvas-wrapper">
+            <canvas id="meshCanvas"></canvas>
+        </div>
+        
+        <div id="error-msg"></div>
+        <button id="btn-validate" class="success" style="display: none; align-self: flex-start;" onclick="validateAndProceed()">Xác nhận hình học & Console Log</button>
+    </main>
+
+    <script>
+        const canvas = document.getElementById('meshCanvas');
+        const ctx = canvas.getContext('2d');
+        const wrapper = document.getElementById('canvas-wrapper');
+        const errorMsg = document.getElementById('error-msg');
+        
+        // --- STATE MANAGEMENT ---
+        let projectInfo = { id: Date.now().toString(), name: '', description: '', version: 1 };
+        let outerBoundary = []; 
+        let holes = []; 
+        let currentHole = [];
+        let mode = 'OUTER'; // 'OUTER', 'HOLE', 'EDIT'
+        let isOuterClosed = false;
+
+        // Interaction State
+        let selectedPointInfo = null; // { arrayRef, index }
+        let isDragging = false;
+        const HIT_RADIUS = 10;
+
+        function resizeCanvas() {
+            canvas.width = wrapper.clientWidth;
+            canvas.height = wrapper.clientHeight;
+            draw();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- A. PROJECT & DATA (FR-01, FR-02, FR-03) ---
+        function saveProject() {
+            projectInfo.name = document.getElementById('proj-name').value || 'Untitled';
+            projectInfo.description = document.getElementById('proj-desc').value;
+            projectInfo.version += 1; // Snapshot versioning
+            
+            const dataToSave = {
+                projectInfo,
+                geometry: { outerBoundary, holes, isOuterClosed }
+            };
+            
+            localStorage.setItem('meshingProject', JSON.stringify(dataToSave));
+            document.getElementById('project-status').innerText = `Đã lưu (v${projectInfo.version})`;
+            showSuccess("Đã lưu project vào LocalStorage!");
+        }
+
+        function loadProject() {
+            const saved = localStorage.getItem('meshingProject');
+            if (saved) {
+                const data = JSON.parse(saved);
+                projectInfo = data.projectInfo;
+                document.getElementById('proj-name').value = projectInfo.name;
+                document.getElementById('proj-desc').value = projectInfo.description;
+                document.getElementById('project-status').innerText = `Đã tải (v${projectInfo.version})`;
+                
+                outerBoundary = data.geometry.outerBoundary;
+                holes = data.geometry.holes;
+                isOuterClosed = data.geometry.isOuterClosed;
+                currentHole = [];
+                
+                setMode(isOuterClosed ? 'HOLE' : 'OUTER');
+                if (isOuterClosed) {
+                    document.getElementById('btn-hole').disabled = false;
+                    document.getElementById('btn-validate').style.display = 'block';
+                }
+                draw();
+                showSuccess("Đã tải project thành công!");
+            } else {
+                showError("Không tìm thấy dữ liệu đã lưu.");
+            }
+        }
+
+        function importJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.outerBoundary && Array.isArray(data.outerBoundary)) {
+                        outerBoundary = data.outerBoundary;
+                        holes = data.holes || [];
+                        isOuterClosed = true;
+                        document.getElementById('btn-hole').disabled = false;
+                        document.getElementById('btn-validate').style.display = 'block';
+                        setMode('EDIT');
+                        draw();
+                        showSuccess("Import thành công!");
+                    } else { throw new Error("Format không hợp lệ"); }
+                } catch (err) {
+                    showError("Lỗi đọc file JSON: Cấu trúc không đúng.");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function showSuccess(msg) {
+            const el = document.getElementById('success-msg');
+            el.innerText = msg;
+            setTimeout(() => el.innerText = '', 3000);
+        }
+
+        // --- GEOMETRY MATH ALGORITHMS ---
+        function ccw(A, B, C) { return (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x); }
+        function intersect(A, B, C, D) {
+            if (A.x === C.x && A.y === C.y) return false;
+            if (B.x === C.x && B.y === C.y) return false;
+            return ccw(A, C, D) !== ccw(B, C, D) && ccw(A, B, C) !== ccw(A, B, D);
+        }
+
+        // Kiểm tra Point-in-Polygon (Ray casting) cho Hole validation
+        function isPointInPolygon(point, polygon) {
+            let x = point.x, y = point.y;
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                let xi = polygon[i].x, yi = polygon[i].y;
+                let xj = polygon[j].x, yj = polygon[j].y;
+                let intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        // --- INTERACTION LOGIC ---
+        function getHitPoint(point) {
+            let arraysToCheck = [
+                { arr: outerBoundary, ref: 'outerBoundary' },
+                { arr: currentHole, ref: 'currentHole' },
+                ...holes.map((h, i) => ({ arr: h, ref: `hole_${i}` }))
+            ];
+
+            for (let item of arraysToCheck) {
+                for (let i = 0; i < item.arr.length; i++) {
+                    const p = item.arr[i];
+                    const dist = Math.sqrt(Math.pow(p.x - point.x, 2) + Math.pow(p.y - point.y, 2));
+                    if (dist < HIT_RADIUS) return { arrayRef: item.arr, index: i, type: item.ref };
+                }
+            }
+            return null;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+            if (mode === 'EDIT') {
+                selectedPointInfo = getHitPoint(point);
+                if (selectedPointInfo) {
+                    isDragging = true;
+                    document.getElementById('btn-del-vertex').disabled = false;
+                    canvas.style.cursor = 'grabbing';
+                } else {
+                    document.getElementById('btn-del-vertex').disabled = true;
+                }
+                draw();
+                return;
+            }
+
+            // Xử lý vẽ (OUTER/HOLE)
+            if (mode === 'OUTER' && isOuterClosed) {
+                showError("Outer Boundary đã đóng. Vui lòng vẽ Lỗ hoặc chọn công cụ Chỉnh sửa.");
+                return;
+            }
+
+            clearError();
+            if (mode === 'OUTER') { outerBoundary.push(point); } 
+            else if (mode === 'HOLE') { currentHole.push(point); }
+            draw();
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging && selectedPointInfo && mode === 'EDIT') {
+                const rect = canvas.getBoundingClientRect();
+                selectedPointInfo.arrayRef[selectedPointInfo.index] = { 
+                    x: e.clientX - rect.left, y: e.clientY - rect.top 
+                };
+                draw();
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                canvas.style.cursor = 'crosshair';
+                // (Tùy chọn) Gọi validate toàn cục ở đây sau khi thả chuột
+            }
+        });
+
+        // --- CÁC HÀM ĐIỀU KHIỂN ---
+        function setMode(newMode) {
+            if (newMode === 'HOLE' && !isOuterClosed) {
+                showError("Vui lòng đóng vòng Outer Boundary trước."); return;
+            }
+            mode = newMode;
+            document.querySelectorAll('.toolbar button').forEach(btn => btn.classList.remove('active-tool'));
+            if (mode === 'OUTER') document.getElementById('btn-outer').classList.add('active-tool');
+            if (mode === 'HOLE') document.getElementById('btn-hole').classList.add('active-tool');
+            if (mode === 'EDIT') document.getElementById('btn-edit').classList.add('active-tool');
+            
+            selectedPointInfo = null;
+            document.getElementById('btn-del-vertex').disabled = true;
+            draw();
+        }
+
+        function closeCurrentLoop() {
+            if (mode === 'OUTER' && !isOuterClosed) {
+                if (outerBoundary.length < 3) { showError("Cần ít nhất 3 điểm."); return; }
+                isOuterClosed = true;
+                document.getElementById('btn-hole').disabled = false;
+                document.getElementById('btn-validate').style.display = 'block';
+                setMode('HOLE');
+            } else if (mode === 'HOLE') {
+                if (currentHole.length < 3) { showError("Lỗ cần ít nhất 3 điểm."); return; }
+                
+                // FR-07: Kiểm tra xem Hole có nằm hoàn toàn trong Outer Boundary không
+                let isInside = currentHole.every(p => isPointInPolygon(p, outerBoundary));
+                if (!isInside) {
+                    showError("LỖI (FR-07): Lỗ phải nằm HOÀN TOÀN bên trong Outer Boundary!");
+                    return;
+                }
+
+                holes.push([...currentHole]);
+                currentHole = [];
+            }
+            draw(); clearError();
+        }
+
+        function deleteSelectedVertex() {
+            if (selectedPointInfo) {
+                selectedPointInfo.arrayRef.splice(selectedPointInfo.index, 1);
+                selectedPointInfo = null;
+                document.getElementById('btn-del-vertex').disabled = true;
+                draw();
+            }
+        }
+
+        function clearCanvas() {
+            outerBoundary = []; holes = []; currentHole = []; isOuterClosed = false;
+            document.getElementById('btn-hole').disabled = true;
+            document.getElementById('btn-validate').style.display = 'none';
+            document.getElementById('btn-del-vertex').disabled = true;
+            selectedPointInfo = null;
+            setMode('OUTER'); clearError(); draw();
+        }
+
+        function showError(msg) { errorMsg.innerText = msg; }
+        function clearError() { errorMsg.innerText = ''; }
+
+        function validateAndProceed() {
+            const output = { projectInfo, geometry: { outerBoundary, holes } };
+            console.log("JSON Output chuẩn bị gửi Backend:", JSON.stringify(output, null, 2));
+            alert("Đã validate hình học. Mở Console (F12) để xem JSON output.");
+        }
+
+        // --- RENDER (VẼ) ---
+        function drawPath(path, isClosed, strokeColor, fillColor, highlightPointArrRef) {
+            if (path.length === 0) return;
+            ctx.beginPath();
+            ctx.moveTo(path[0].x, path[0].y);
+            for (let i = 1; i < path.length; i++) { ctx.lineTo(path[i].x, path[i].y); }
+            if (isClosed && path.length > 2) {
+                ctx.closePath();
+                if(fillColor) { ctx.fillStyle = fillColor; ctx.fill(); }
+            }
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Vẽ node
+            for (let i = 0; i < path.length; i++) {
+                ctx.beginPath();
+                ctx.arc(path[i].x, path[i].y, 5, 0, Math.PI * 2);
+                // Highlight điểm đang được chọn trong chế độ Edit
+                if (highlightPointArrRef === path && selectedPointInfo && selectedPointInfo.index === i) {
+                    ctx.fillStyle = '#FF4500'; ctx.lineWidth = 2; ctx.strokeStyle = '#000'; ctx.stroke();
+                } else {
+                    ctx.fillStyle = '#333';
+                }
+                ctx.fill();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Draw Outer Boundary
+            drawPath(outerBoundary, isOuterClosed, '#0055AA', isOuterClosed ? 'rgba(0, 85, 170, 0.1)' : null, selectedPointInfo?.arrayRef);
+            // Draw Holes
+            for (let hole of holes) { drawPath(hole, true, '#DC3545', 'rgba(255, 255, 255, 1)', selectedPointInfo?.arrayRef); }
+            // Draw Current drawing Hole
+            if (mode === 'HOLE') { drawPath(currentHole, false, '#FFC107', null, selectedPointInfo?.arrayRef); }
+        }
+
+        // Init
+        setTimeout(resizeCanvas, 100);
+    </script>
+</body>
+</html>
