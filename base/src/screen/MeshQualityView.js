@@ -1,63 +1,131 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView, Switch, Modal, Platform, StatusBar } from 'react-native';
-import Svg, { Polygon, Circle, Text as SvgText, Line } from 'react-native-svg';
+import Svg, { Polygon, Polyline, Line, Text as SvgText } from 'react-native-svg';
 import Feather from 'react-native-vector-icons/Feather';
 
 export default function MeshQualityView({ onBack, meshingData }) {
   const [highlightBad, setHighlightBad] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
-
+  console.log('Received meshing data:', meshingData);
   // Get data mapped from API result
   const nodes = meshingData?.result?.nodes || [];
+  const deformedNodes = meshingData?.result?.deformedNodes || [];
   const elements = meshingData?.result?.elements || [];
+  const fixedNodeIds = meshingData?.result?.fixedNodeIds || [];
   const nodeCount = meshingData?.result?.nodeCount || 0;
   const elementCount = meshingData?.result?.elementCount || 0;
+  const meshInfo = meshingData?.result?.meshInfo || {};
+  const scaleFactor = meshingData?.result?.scaleFactor || 200;
 
   const renderMockMesh = () => {
-    if (!nodes.length || !elements.length) {
+    if (!nodes.length || !elements.length || !deformedNodes.length) {
       return (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: '#6B7280' }}>No meshing data available.</Text>
+          <Text style={{ color: '#6B7280' }}>No FEA data available.</Text>
         </View>
       );
     }
 
-    // Lấy max X và max Y để tính scale chuẩn
-    const maxX = Math.max(...nodes.map(n => n.x)) || 1;
-    const maxY = Math.max(...nodes.map(n => n.y)) || 1;
+    const allPoints = [...nodes, ...deformedNodes];
+    const minX = Math.min(...allPoints.map(n => n.x));
+    const maxX = Math.max(...allPoints.map(n => n.x));
+    const minY = Math.min(...allPoints.map(n => n.y));
+    const maxY = Math.max(...allPoints.map(n => n.y));
+    const spanX = Math.max(1e-6, maxX - minX);
+    const spanY = Math.max(1e-6, maxY - minY);
+    const pad = 8;
+    const axisLeft = 12;
+    const axisBottom = 92;
+    const axisRight = 94;
+    const axisTop = 8;
+    const xTickCount = 4;
+    const yTickCount = 4;
+
+    const toCanvas = (x, y) => {
+      const sx = axisLeft + ((x - minX) / spanX) * (axisRight - axisLeft);
+      const sy = axisBottom - ((y - minY) / spanY) * (axisBottom - axisTop);
+      return `${sx},${sy}`;
+    };
+
+    const xTicks = Array.from({ length: xTickCount + 1 }, (_, i) => {
+      const t = minX + (spanX * i) / xTickCount;
+      const x = axisLeft + ((axisRight - axisLeft) * i) / xTickCount;
+      return { value: Number(t.toFixed(2)), x };
+    });
+    const yTicks = Array.from({ length: yTickCount + 1 }, (_, i) => {
+      const t = minY + (spanY * i) / yTickCount;
+      const y = axisBottom - ((axisBottom - axisTop) * i) / yTickCount;
+      return { value: Number(t.toFixed(2)), y };
+    });
 
     return (
-      <Svg height="100%" width="100%" viewBox={`-10 -10 120 120`} preserveAspectRatio="xMidYMid meet">
-        {/* Draw Quadrilateral Elements */}
+      <Svg height="100%" width="100%" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+        {xTicks.map((tick, i) => (
+          <React.Fragment key={`xtick-${i}`}>
+            <Line x1={tick.x} y1={axisBottom} x2={tick.x} y2={axisTop} stroke="#E5E7EB" strokeWidth="0.3" strokeDasharray="1 1" />
+            <SvgText x={tick.x} y={96.5} fontSize="2.7" fill="#4B5563" textAnchor="middle">
+              {tick.value}
+            </SvgText>
+          </React.Fragment>
+        ))}
+        {yTicks.map((tick, i) => (
+          <React.Fragment key={`ytick-${i}`}>
+            <Line x1={axisLeft} y1={tick.y} x2={axisRight} y2={tick.y} stroke="#E5E7EB" strokeWidth="0.3" strokeDasharray="1 1" />
+            <SvgText x={9.5} y={tick.y + 0.8} fontSize="2.7" fill="#4B5563" textAnchor="end">
+              {tick.value}
+            </SvgText>
+          </React.Fragment>
+        ))}
+
+        <Line x1={axisLeft} y1={axisBottom} x2={axisRight} y2={axisBottom} stroke="#111827" strokeWidth="0.45" />
+        <Line x1={axisLeft} y1={axisBottom} x2={axisLeft} y2={axisTop} stroke="#111827" strokeWidth="0.45" />
+        <SvgText x={(axisLeft + axisRight) / 2} y={99} fontSize="3" fill="#374151" textAnchor="middle">
+          Truc X (m)
+        </SvgText>
+        <SvgText x={3.5} y={(axisTop + axisBottom) / 2} fontSize="3" fill="#374151" textAnchor="middle" transform={`rotate(-90 3.5 ${(axisTop + axisBottom) / 2})`}>
+          Truc Y (m)
+        </SvgText>
+
         {elements.map((el, i) => {
-          const p = el.nodes.map(nId => {
-            const node = nodes.find(n => n.id === nId);
-            const sy = ((node.y / maxY) * 100);
-            const sx = ((node.x / maxX) * 100);
-            return `${sx},${sy}`;
+          const originalPoints = el.nodes.map((nId) => {
+            const node = nodes[nId];
+            return toCanvas(node.x, node.y);
           });
+          const deformedPoints = el.nodes.map((nId) => {
+            const node = deformedNodes[nId];
+            return toCanvas(node.x, node.y);
+          });
+
           return (
-            <Polygon 
-              key={i} 
-              points={p.join(' ')} 
-              fill={highlightBad && i % 2 !== 0 ? "rgba(220, 38, 38, 0.3)" : "rgba(29, 78, 216, 0.1)"} 
-              stroke={highlightBad && i % 2 !== 0 ? "#DC2626" : "#1D4ED8"} 
-              strokeWidth="0.5" 
-            />
+            <React.Fragment key={i}>
+              <Polyline
+                points={`${originalPoints.join(' ')} ${originalPoints[0]}`}
+                fill="none"
+                stroke="#111827"
+                strokeDasharray="1.4 1.2"
+                strokeWidth="0.5"
+                opacity="0.75"
+              />
+              <Polyline
+                points={`${deformedPoints.join(' ')} ${deformedPoints[0]}`}
+                fill="none"
+                stroke={highlightBad && i % 2 !== 0 ? '#DC2626' : '#1D4ED8'}
+                strokeWidth="0.7"
+                opacity="0.95"
+              />
+            </React.Fragment>
           );
         })}
 
-        {/* Draw Nodes */}
-        {nodes.map((node) => {
-          const sy = ((node.y / maxY) * 100);
-          const sx = ((node.x / maxX) * 100);
+        {fixedNodeIds.map((nodeId) => {
+          const node = nodes[nodeId];
+          const [sx, sy] = toCanvas(node.x, node.y).split(',').map(Number);
           return (
-            <React.Fragment key={node.id}>
-              <Circle cx={sx} cy={sy} r="2" fill="#111827" />
-              <SvgText x={sx + 3} y={sy - 3} fontSize="5" fill="#374151" fontWeight="bold">
-                N{node.id}({node.x},{node.y})
-              </SvgText>
-            </React.Fragment>
+            <Polygon
+              key={`fixed-${nodeId}`}
+              points={`${sx},${sy - 1.8} ${sx - 1.4},${sy + 1.5} ${sx + 1.4},${sy + 1.5}`}
+              fill="#DC2626"
+            />
           );
         })}
       </Svg>
@@ -87,9 +155,6 @@ export default function MeshQualityView({ onBack, meshingData }) {
         <View style={styles.canvasContainer}>
           <View style={styles.canvasWrapper}>
             {renderMockMesh()}
-            <View style={styles.badgeView}>
-              <Text style={styles.badgeText}>VIEW: WIREFRAME</Text>
-            </View>
             <View style={styles.zoomControls}>
               <TouchableOpacity style={styles.zoomBtn}>
                 <Feather name="zoom-in" size={20} color="#374151" />
@@ -110,14 +175,14 @@ export default function MeshQualityView({ onBack, meshingData }) {
             <Text style={styles.statLabel}>Nodes</Text>
             <View style={styles.statValueRow}>
               <Text style={styles.statValue}>{nodeCount}</Text>
-              <Text style={styles.statIncrease}>Valid</Text>
+              <Text style={styles.statIncrease}>NX={meshInfo.nx || '-'}</Text>
             </View>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Elements (Quads)</Text>
             <View style={styles.statValueRow}>
               <Text style={styles.statValue}>{elementCount}</Text>
-              <Text style={styles.statStable}>Stable</Text>
+              <Text style={styles.statStable}>NY={meshInfo.ny || '-'}</Text>
             </View>
           </View>
         </View>
@@ -248,7 +313,7 @@ const styles = StyleSheet.create({
   
   canvasContainer: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: 20, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4 },
   canvasWrapper: { height: 280, width: '100%', position: 'relative', backgroundColor: '#EFF6FF' },
-  badgeView: { position: 'absolute', bottom: 16, left: 16, backgroundColor: '#fff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, elevation: 3, shadowColor: '#000', shadowOffset:{width:0, height:2}, shadowOpacity:0.1, shadowRadius:2 },
+  badgeView: { position: 'absolute', top: 12, left: 16, backgroundColor: '#fff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, elevation: 3, shadowColor: '#000', shadowOffset:{width:0, height:2}, shadowOpacity:0.1, shadowRadius:2 },
   badgeText: { fontSize: 11, fontWeight: '800', color: '#4B5563', letterSpacing: 0.5 },
   zoomControls: { position: 'absolute', top: 16, right: 16, backgroundColor: '#fff', borderRadius: 8, overflow: 'hidden', elevation: 3, shadowColor: '#000', shadowOffset:{width:0, height:2}, shadowOpacity:0.1, shadowRadius:2 },
   zoomBtn: { padding: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },

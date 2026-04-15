@@ -1,6 +1,5 @@
 import numpy as np
-from step4_get_Ke import compute_Ke
-
+from ThuatToan_Final.step4_get_Ke import compute_Ke
 def assemble_K_global(nodes, elements, D, config, verbose=True):
     """
     [BƯỚC 5] Lắp ráp Ma trận độ cứng Toàn cục (K_global).

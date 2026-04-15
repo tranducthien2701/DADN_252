@@ -1,5 +1,5 @@
 import numpy as np
-from step3_get_dN_nat import compute_dN_nat, get_gauss_points
+from ThuatToan_Final.step3_get_dN_nat import compute_dN_nat, get_gauss_points
 
 def compute_Ke(coords, D, thickness, config, element_id=None, verbose=False):
     """

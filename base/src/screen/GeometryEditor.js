@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ScrollView, Modal, Switch, TextInput, KeyboardAvoidingView, Platform, StatusBar } from 'react-native';
+import Svg, { Rect, Line, Circle, Text as SvgText } from 'react-native-svg';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -8,6 +9,8 @@ import Feather from 'react-native-vector-icons/Feather';
 export default function GeometryEditor({ onBack, onNext }) {
   const [meshingModalVisible, setMeshingModalVisible] = useState(false);
   const [meshingLevel, setMeshingLevel] = useState('Medium');
+  const [nx, setNx] = useState('5');
+  const [ny, setNy] = useState('1');
   const [minAngle, setMinAngle] = useState('28.5');
   const [maxArea, setMaxArea] = useState('0.05');
   const [advancedExpanded, setAdvancedExpanded] = useState(false);
@@ -24,6 +27,26 @@ export default function GeometryEditor({ onBack, onNext }) {
   const [thickness, setThickness] = useState('0.1');
   const [pressure, setPressure] = useState('10000');
 
+  const parsePositiveNumber = (value, fallback = 1) => {
+    const parsed = parseFloat(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return parsed;
+  };
+
+  const buildAxisTicks = (maxValue, divisions = 4) => {
+    const safeMax = parsePositiveNumber(maxValue, 1);
+    const step = safeMax / divisions;
+    return Array.from({ length: divisions + 1 }, (_, i) => {
+      const value = step * i;
+      return Number(value.toFixed(2));
+    });
+  };
+
+  const xTicks = buildAxisTicks(rectWidth, 4);
+  const yTicks = buildAxisTicks(rectHeight, 4);
+  const widthValue = parsePositiveNumber(rectWidth, 1);
+  const heightValue = parsePositiveNumber(rectHeight, 1);
+
   // Submit handled -> Go to next screen
   const handleStartMeshing = () => {
     // Thu thập toàn bộ các state thông số:
@@ -39,6 +62,8 @@ export default function GeometryEditor({ onBack, onNext }) {
       },
       meshingConfig: {
         level: meshingLevel,
+        nx: parseInt(nx, 10) || 1,
+        ny: parseInt(ny, 10) || 1,
         minAngle: parseFloat(minAngle),
         maxArea: parseFloat(maxArea)
       }
@@ -47,6 +72,96 @@ export default function GeometryEditor({ onBack, onNext }) {
     console.log("Send to API: ", meshingData);
     setMeshingModalVisible(false);
     onNext(meshingData);
+  };
+
+  const renderAxisMatchedPreview = () => {
+    const viewWidth = 320;
+    const viewHeight = 220;
+    const paddingLeft = 34;
+    const paddingRight = 12;
+    const paddingTop = 12;
+    const paddingBottom = 28;
+    const plotWidth = viewWidth - paddingLeft - paddingRight;
+    const plotHeight = viewHeight - paddingTop - paddingBottom;
+
+    const toX = (x) => paddingLeft + (x / widthValue) * plotWidth;
+    const toY = (y) => paddingTop + (1 - y / heightValue) * plotHeight;
+
+    return (
+      <View style={styles.axisPreviewCard}>
+        <Svg width="100%" height={viewHeight} viewBox={`0 0 ${viewWidth} ${viewHeight}`}>
+          {xTicks.map((tick) => (
+            <Line
+              key={`grid-x-${tick}`}
+              x1={toX(tick)}
+              y1={paddingTop}
+              x2={toX(tick)}
+              y2={paddingTop + plotHeight}
+              stroke="#E5E7EB"
+              strokeWidth="1"
+              strokeDasharray="2 2"
+            />
+          ))}
+          {yTicks.map((tick) => (
+            <Line
+              key={`grid-y-${tick}`}
+              x1={paddingLeft}
+              y1={toY(tick)}
+              x2={paddingLeft + plotWidth}
+              y2={toY(tick)}
+              stroke="#E5E7EB"
+              strokeWidth="1"
+              strokeDasharray="2 2"
+            />
+          ))}
+
+          <Line x1={paddingLeft} y1={paddingTop + plotHeight} x2={paddingLeft + plotWidth} y2={paddingTop + plotHeight} stroke="#111827" strokeWidth="1.2" />
+          <Line x1={paddingLeft} y1={paddingTop + plotHeight} x2={paddingLeft} y2={paddingTop} stroke="#111827" strokeWidth="1.2" />
+
+          <Rect
+            x={toX(0)}
+            y={toY(heightValue)}
+            width={plotWidth}
+            height={plotHeight}
+            fill="rgba(37, 99, 235, 0.10)"
+            stroke="#2563EB"
+            strokeWidth="2"
+            rx="2"
+          />
+
+          <Circle cx={toX(0)} cy={toY(0)} r="2.2" fill="#1D4ED8" />
+          <Circle cx={toX(widthValue)} cy={toY(0)} r="2.2" fill="#1D4ED8" />
+          <Circle cx={toX(widthValue)} cy={toY(heightValue)} r="2.2" fill="#1D4ED8" />
+          <Circle cx={toX(0)} cy={toY(heightValue)} r="2.2" fill="#1D4ED8" />
+
+          {xTicks.map((tick) => (
+            <SvgText
+              key={`x-lbl-${tick}`}
+              x={toX(tick)}
+              y={paddingTop + plotHeight + 16}
+              fill="#4B5563"
+              fontSize="9"
+              textAnchor="middle"
+            >
+              {tick}m
+            </SvgText>
+          ))}
+
+          {[...yTicks].reverse().map((tick) => (
+            <SvgText
+              key={`y-lbl-${tick}`}
+              x={paddingLeft - 8}
+              y={toY(tick) + 3}
+              fill="#4B5563"
+              fontSize="9"
+              textAnchor="end"
+            >
+              {tick}m
+            </SvgText>
+          ))}
+        </Svg>
+      </View>
+    );
   };
 
   return (
@@ -66,29 +181,10 @@ export default function GeometryEditor({ onBack, onNext }) {
         </TouchableOpacity>
       </View>
 
-      {/* Rulers and Workspace */}
+      {/* Workspace */}
       <View style={styles.workspaceContainer}>
-        {/* Top Ruler Placeholder */}
-        <View style={styles.topRuler}>
-          <Text style={styles.rulerText}>0</Text>
-          <Text style={styles.rulerText}>100</Text>
-          <Text style={styles.rulerText}>200</Text>
-          <Text style={styles.rulerText}>300</Text>
-        </View>
-        <View style={styles.workspaceBody}>
-          {/* Left Ruler Placeholder */}
-          <View style={styles.leftRuler}>
-            <Text style={styles.rulerTextVertical}>0</Text>
-            <Text style={styles.rulerTextVertical}>100</Text>
-            <Text style={styles.rulerTextVertical}>200</Text>
-            <Text style={styles.rulerTextVertical}>300</Text>
-            <Text style={styles.rulerTextVertical}>400</Text>
-            <Text style={styles.rulerTextVertical}>500</Text>
-          </View>
-          
-          {/* Main Drawing Area */}
-          <View style={styles.drawingArea}>
-            <View style={styles.canvasBoundary}>
+        <View style={styles.drawingArea}>
+          <View style={styles.canvasBoundary}>
               
               {isDrawingRect ? (
                 !isShapeCreated ? (
@@ -134,10 +230,7 @@ export default function GeometryEditor({ onBack, onNext }) {
                   </View>
                 ) : (
                   <View style={styles.drawnShapeContainer}>
-                    <View style={[styles.drawnRectangle, {
-                      width: 160 * (Math.min(parseFloat(rectWidth) / parseFloat(rectHeight), 2) || 1),
-                      height: 160 * (Math.min(parseFloat(rectHeight) / parseFloat(rectWidth), 2) || 1),
-                    }]} />
+                    {renderAxisMatchedPreview()}
                     <View style={styles.drawnDimensions}>
                       <Text style={styles.drawnDimText}>W: {rectWidth}m</Text>
                       <Text style={styles.drawnDimText}>H: {rectHeight}m</Text>
@@ -173,7 +266,6 @@ export default function GeometryEditor({ onBack, onNext }) {
                 </View>
               )}
 
-            </View>
           </View>
         </View>
       </View>
@@ -277,6 +369,34 @@ export default function GeometryEditor({ onBack, onNext }) {
                 </View>
               </View>
 
+              <View style={styles.physicsSection}>
+                <Text style={styles.sectionLabel}>Mesh Density</Text>
+                <View style={styles.physicsGrid}>
+                  <View style={styles.physicsItem}>
+                    <Text style={styles.physicsLabel}>NX (elements theo trục X)</Text>
+                    <View style={styles.physicsInputBox}>
+                      <TextInput
+                        style={styles.physicsInput}
+                        value={nx}
+                        onChangeText={setNx}
+                        keyboardType="number-pad"
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.physicsItem}>
+                    <Text style={styles.physicsLabel}>NY (elements theo trục Y)</Text>
+                    <View style={styles.physicsInputBox}>
+                      <TextInput
+                        style={styles.physicsInput}
+                        value={ny}
+                        onChangeText={setNy}
+                        keyboardType="number-pad"
+                      />
+                    </View>
+                  </View>
+                </View>
+              </View>
+
               <View style={styles.advancedConfig}>
                 <TouchableOpacity 
                   style={styles.advancedHeader}
@@ -375,32 +495,6 @@ const styles = StyleSheet.create({
   nextText: { fontSize: 14, color: '#1D4ED8', fontWeight: '600', marginRight: 4 },
   
   workspaceContainer: { flex: 1, backgroundColor: '#F9FAFB' },
-  topRuler: {
-    height: 30,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingLeft: 40,
-    justifyContent: 'space-between',
-    paddingRight: 50,
-    paddingBottom: 4,
-  },
-  rulerText: { fontSize: 10, color: '#9CA3AF' },
-  workspaceBody: { flex: 1, flexDirection: 'row' },
-  leftRuler: {
-    width: 40,
-    backgroundColor: '#fff',
-    borderRightWidth: 1,
-    borderRightColor: '#E5E7EB',
-    alignItems: 'flex-end',
-    paddingRight: 6,
-    justifyContent: 'space-between',
-    paddingVertical: 20,
-  },
-  rulerTextVertical: { fontSize: 10, color: '#9CA3AF' },
-  
   drawingArea: { flex: 1, padding: 20 },
   canvasBoundary: {
     flex: 1,
@@ -543,6 +637,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
+    width: '100%',
   },
   drawnRectangle: {
     borderWidth: 2,
@@ -552,6 +647,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     minHeight: 100,
     minWidth: 100,
+  },
+  axisPreviewCard: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    backgroundColor: '#F9FAFB',
+    marginBottom: 14,
+    overflow: 'hidden',
   },
   drawnDimensions: {
     flexDirection: 'row',
