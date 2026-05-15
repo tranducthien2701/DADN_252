@@ -56,3 +56,6 @@ htmlcov/
 
 # compiled C extensions
 *.pyd
+
+__pycache__/
+base/node_modules
